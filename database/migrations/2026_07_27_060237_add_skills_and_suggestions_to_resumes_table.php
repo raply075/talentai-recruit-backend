@@ -7,16 +7,20 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     public function up(): void
-    {
-        Schema::table('resumes', function (Blueprint $table) {
-            $table->longText('analysis')->nullable();
-        });
-    }
+{
+    Schema::table('resumes', function (Blueprint $table) {
+        $table->json('skills')->nullable();
+        $table->json('suggestions')->nullable();
+    });
+}
 
     public function down(): void
     {
         Schema::table('resumes', function (Blueprint $table) {
-            $table->dropColumn('analysis');
+            $table->dropColumn([
+                'skills',
+                'suggestions',
+            ]);
         });
     }
 };
