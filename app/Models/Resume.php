@@ -17,11 +17,13 @@ class Resume extends Model
     'skills',
     'suggestions',
     'summary',
+    'structured_resume',
 ];
 
 protected $casts = [
     'skills' => 'array',
     'suggestions' => 'array',
+     'structured_resume' => 'array',
 ];
 
     public function user()

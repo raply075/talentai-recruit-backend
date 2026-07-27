@@ -38,6 +38,11 @@ return [
     'openrouter' => [
     'api_key' => env('OPENROUTER_API_KEY'),
     'model' => env('OPENROUTER_MODEL'),
+    'fallback_models' => [
+    'moonshotai/kimi-k2:free',
+    'qwen/qwen3-30b-a3b:free',
+    'mistralai/devstral-small:free',
+],
 ],
 
 ];

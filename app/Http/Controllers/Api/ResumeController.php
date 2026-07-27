@@ -59,6 +59,7 @@ class ResumeController extends Controller
 
         // Analisis AI yang sudah ada
         $analysis = $this->analysisService->analyze($text);
+        \Log::info('CONTROLLER ANALYSIS', $analysis);
 
         // Jika AI Analysis error
         if (isset($analysis['status'])) {
@@ -74,10 +75,11 @@ class ResumeController extends Controller
             'career_level' => $analysis['career_level'] ?? 'Unknown',
             'skills'       => $analysis['skills'] ?? [],
             'suggestions'  => $analysis['suggestions'] ?? [],
+            'structured_resume' => $structuredResume,
         ]);
 
         $resume->refresh();
-
+\Log::info('AFTER UPDATE', $resume->toArray());
         return $this->success([
             'resume' => $resume,
 
