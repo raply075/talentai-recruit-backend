@@ -172,23 +172,24 @@ Jangan menggunakan emoji.
 PROMPT;
 
         $models = [
-            'google/gemma-4-26b-a4b-it:free',
             'openai/gpt-oss-20b:free',
             'inclusionai/ling-3.0-flash:free',
             'poolside/laguna-m.1:free',
+            'google/gemma-4-26b-a4b-it:free',
         ];
 
         foreach ($models as $model) {
 
             try {
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'HTTP-Referer' => config('app.url'),
-                    'X-Title' => config('app.name'),
-                ])
-                ->timeout(120)
-                ->post(
+               $response = Http::connectTimeout(10)
+    ->timeout(40)
+    ->withHeaders([
+        'Authorization' => 'Bearer ' . $apiKey,
+        'HTTP-Referer' => config('app.url'),
+        'X-Title' => config('app.name'),
+    ])
+    ->post(
                     'https://openrouter.ai/api/v1/chat/completions',
                     [
                         'model' => $model,
@@ -208,7 +209,7 @@ PROMPT;
                         'top_p' => 0.8,
                         'frequency_penalty' => 0.4,
                         'presence_penalty' => 0.0,
-                        'max_tokens' => 1000,
+                        'max_tokens' => 700,
                     ]
                 );
 
