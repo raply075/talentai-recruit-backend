@@ -7,6 +7,7 @@ use App\Http\Requests\ResumeUploadRequest;
 use App\Models\Resume;
 use App\Services\Resume\ResumeAnalysisService;
 use App\Services\Resume\ResumeParserService;
+use App\Services\Resume\ResumeStructureService;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -17,55 +18,79 @@ class ResumeController extends Controller
 
     protected ResumeParserService $parserService;
     protected ResumeAnalysisService $analysisService;
+    protected ResumeStructureService $structureService;
 
     public function __construct(
         ResumeParserService $parserService,
-        ResumeAnalysisService $analysisService
+        ResumeAnalysisService $analysisService,
+        ResumeStructureService $structureService
     ) {
         $this->parserService = $parserService;
         $this->analysisService = $analysisService;
+        $this->structureService = $structureService;
     }
 
-    /**
-     * Upload dan analisis resume
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | UPLOAD RESUME
+    |--------------------------------------------------------------------------
+    */
+
     public function upload(ResumeUploadRequest $request)
     {
+        /*
+        |--------------------------------------------------------------------------
+        | 1. AMBIL FILE
+        |--------------------------------------------------------------------------
+        */
+
         $file = $request->file('resume');
 
         /*
         |--------------------------------------------------------------------------
-        | 1. Simpan file
+        | 2. SIMPAN FILE
         |--------------------------------------------------------------------------
         */
 
-        $path = $file->store('resumes', 'public');
+        $path = $file->store(
+            'resumes',
+            'public'
+        );
 
         /*
         |--------------------------------------------------------------------------
-        | 2. Buat data resume awal
+        | 3. BUAT DATA RESUME AWAL
         |--------------------------------------------------------------------------
         */
 
         $resume = Resume::create([
             'user_id' => $request->user()->id,
+
             'title' => pathinfo(
                 $file->getClientOriginalName(),
                 PATHINFO_FILENAME
             ),
+
             'original_name' => $file->getClientOriginalName(),
+
             'file_path' => $path,
+
             'file_size' => $file->getSize(),
+
             'ats_score' => null,
+
             'career_level' => null,
+
             'skills' => [],
+
             'suggestions' => [],
+
             'structured_resume' => null,
         ]);
 
         /*
         |--------------------------------------------------------------------------
-        | 3. Lokasi file
+        | 4. FULL PATH FILE
         |--------------------------------------------------------------------------
         */
 
@@ -75,13 +100,15 @@ class ResumeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 4. Parse resume
+        | 5. PARSE RESUME
         |--------------------------------------------------------------------------
         */
 
         try {
 
-            $text = $this->parserService->parse($fullPath);
+            $text = $this->parserService->parse(
+                $fullPath
+            );
 
             Log::info('RESUME PARSED', [
                 'resume_id' => $resume->id,
@@ -103,7 +130,7 @@ class ResumeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 5. Validasi hasil parsing
+        | 6. CEK HASIL PARSING
         |--------------------------------------------------------------------------
         */
 
@@ -117,162 +144,147 @@ class ResumeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 6. Analisis ATS
+        | 7. ANALISIS ATS
         |--------------------------------------------------------------------------
         */
 
+        $analysis = null;
+        $analysisError = null;
+
         try {
 
-            $analysis = $this->analysisService->analyze($text);
+            $analysis = $this->analysisService->analyze(
+                $text
+            );
 
             Log::info('CONTROLLER ANALYSIS', [
                 'resume_id' => $resume->id,
                 'ats_score' => $analysis['ats_score'] ?? null,
                 'career_level' => $analysis['career_level'] ?? null,
-                'skills' => $analysis['skills'] ?? [],
+                'skills_count' => count(
+                    $analysis['skills'] ?? []
+                ),
             ]);
 
         } catch (\Throwable $e) {
 
+            $analysisError = $e->getMessage();
+
             Log::error('ATS ANALYSIS ERROR', [
                 'resume_id' => $resume->id,
-                'message' => $e->getMessage(),
+                'message' => $analysisError,
             ]);
 
-            return $this->error(
-                'Resume berhasil dibaca tetapi analisis ATS gagal.',
-                500
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 7. Cek hasil ATS
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            isset($analysis['status'])
-            && $analysis['status'] !== 200
-        ) {
-
-            return response()->json(
-                $analysis,
-                $analysis['status'] ?? 500
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 8. Buat structured_resume TANPA AI kedua
-        |
-        | Ini sengaja dibuat dari data yang sudah ada.
-        | Tujuannya mencegah timeout PHP 30 detik.
-        |--------------------------------------------------------------------------
-        */
-
-        $structuredResume = [
-
-            'personal' => [
-                'name' => null,
-                'email' => null,
-                'phone' => null,
-                'location' => null,
-                'linkedin' => null,
-                'github' => null,
-                'portfolio' => null,
-            ],
-
-            'profile' => null,
-
-            'education' => [],
-
-            'experience' => [],
-
-            'projects' => [],
-
-            'skills' => $analysis['skills'] ?? [],
-
-            'organizations' => [],
-
-            'certifications' => [],
-
-            'achievements' => [],
-
             /*
             |--------------------------------------------------------------------------
-            | Data mentah CV
+            | JANGAN HENTIKAN PROSES
             |--------------------------------------------------------------------------
             |
-            | Cover Letter Controller dapat menggunakan raw_text ini
-            | sebagai sumber utama informasi CV.
-            |--------------------------------------------------------------------------
+            | Resume tetap disimpan.
+            | Kita tetap mencoba membuat struktur resume.
+            |
             */
 
-            'raw_text' => $text,
+            $analysis = [
+                'ats_score' => null,
+                'career_level' => null,
+                'skills' => [],
+                'suggestions' => [
+                    'Analisis ATS belum tersedia: '
+                    . $analysisError,
+                ],
+            ];
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | 8. STRUKTUR RESUME
+        |--------------------------------------------------------------------------
+        */
+
+        $structuredResume = null;
+        $structureError = null;
+
+        try {
+
+            Log::info(
+                'START RESUME STRUCTURE',
+                [
+                    'resume_id' => $resume->id,
+                    'text_length' => mb_strlen($text),
+                ]
+            );
+
+            $structuredResume =
+                $this->structureService->structure(
+                    $text
+                );
+
+            Log::info(
+                'STRUCTURED RESUME RESULT',
+                [
+                    'resume_id' => $resume->id,
+                    'has_data' => ! empty(
+                        $structuredResume
+                    ),
+                    'projects_count' => count(
+                        $structuredResume['projects'] ?? []
+                    ),
+                    'skills_count' => count(
+                        $structuredResume['skills'] ?? []
+                    ),
+                ]
+            );
+
+        } catch (\Throwable $e) {
+
+            $structureError = $e->getMessage();
+
+            Log::error(
+                'RESUME STRUCTURE ERROR',
+                [
+                    'resume_id' => $resume->id,
+                    'message' => $structureError,
+                ]
+            );
 
             /*
             |--------------------------------------------------------------------------
-            | Data ATS
+            | STRUKTUR GAGAL
             |--------------------------------------------------------------------------
             */
 
-            'ats_score' => $analysis['ats_score'] ?? null,
+            $structuredResume = null;
+        }
 
-            'career_level' => $analysis['career_level'] ?? null,
+        /*
+        |--------------------------------------------------------------------------
+        | 9. SIMPAN HASIL KE DATABASE
+        |--------------------------------------------------------------------------
+        */
 
-            'suggestions' => $analysis['suggestions'] ?? [],
-        ];
+        $resume->update([
 
-        Log::info('STRUCTURED RESUME CREATED WITHOUT SECOND AI CALL', [
-            'resume_id' => $resume->id,
-            'text_length' => mb_strlen($text),
-            'skills_count' => count(
-                $structuredResume['skills'] ?? []
-            ),
+            'ats_score' =>
+                $analysis['ats_score'] ?? null,
+
+            'career_level' =>
+                $analysis['career_level'] ?? null,
+
+            'skills' =>
+                $analysis['skills'] ?? [],
+
+            'suggestions' =>
+                $analysis['suggestions'] ?? [],
+
+            'structured_resume' =>
+                $structuredResume,
+
         ]);
 
         /*
         |--------------------------------------------------------------------------
-        | 9. Update database
-        |--------------------------------------------------------------------------
-        */
-
-        try {
-
-            $resume->update([
-
-                'ats_score' => $analysis['ats_score'] ?? 0,
-
-                'career_level' => $analysis['career_level']
-                    ?? 'Unknown',
-
-                'skills' => $analysis['skills']
-                    ?? [],
-
-                'suggestions' => $analysis['suggestions']
-                    ?? [],
-
-                'structured_resume' => $structuredResume,
-
-            ]);
-
-        } catch (\Throwable $e) {
-
-            Log::error('RESUME DATABASE UPDATE ERROR', [
-                'resume_id' => $resume->id,
-                'message' => $e->getMessage(),
-            ]);
-
-            return $this->error(
-                'Resume berhasil dianalisis tetapi gagal disimpan.',
-                500
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | 10. Refresh
+        | 10. REFRESH DATA
         |--------------------------------------------------------------------------
         */
 
@@ -280,22 +292,29 @@ class ResumeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 11. Log hasil akhir
+        | 11. LOG HASIL AKHIR
         |--------------------------------------------------------------------------
         */
 
-        Log::info('AFTER UPDATE', [
-            'id' => $resume->id,
-            'structured_resume_exists' =>
-                ! empty($resume->structured_resume),
-            'ats_score' => $resume->ats_score,
-            'career_level' => $resume->career_level,
-            'skills_count' => count($resume->skills ?? []),
-        ]);
+        Log::info(
+            'AFTER UPDATE',
+            [
+                'resume_id' => $resume->id,
+                'ats_score' => $resume->ats_score,
+                'career_level' => $resume->career_level,
+                'skills_count' => count(
+                    $resume->skills ?? []
+                ),
+                'structured_resume_exists' =>
+                    ! empty(
+                        $resume->structured_resume
+                    ),
+            ]
+        );
 
         /*
         |--------------------------------------------------------------------------
-        | 12. Response
+        | 12. RESPONSE
         |--------------------------------------------------------------------------
         */
 
@@ -307,15 +326,24 @@ class ResumeController extends Controller
 
                 'structured_resume' =>
                     $structuredResume,
+
+                'analysis_error' =>
+                    $analysisError,
+
+                'structure_error' =>
+                    $structureError,
             ],
-            'Resume berhasil dianalisis dan disimpan.',
+            'Resume berhasil diproses.',
             201
         );
     }
 
-    /**
-     * GET ALL RESUMES
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | GET ALL RESUMES
+    |--------------------------------------------------------------------------
+    */
+
     public function index()
     {
         $resumes = auth()
@@ -330,12 +358,17 @@ class ResumeController extends Controller
         );
     }
 
-    /**
-     * GET DETAIL RESUME
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | GET DETAIL RESUME
+    |--------------------------------------------------------------------------
+    */
+
     public function show(Resume $resume)
     {
-        if ($resume->user_id !== auth()->id()) {
+        if (
+            $resume->user_id !== auth()->id()
+        ) {
 
             return $this->error(
                 'Anda tidak memiliki akses ke resume ini',
@@ -349,12 +382,17 @@ class ResumeController extends Controller
         );
     }
 
-    /**
-     * DELETE RESUME
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE RESUME
+    |--------------------------------------------------------------------------
+    */
+
     public function destroy(Resume $resume)
     {
-        if ($resume->user_id !== auth()->id()) {
+        if (
+            $resume->user_id !== auth()->id()
+        ) {
 
             return $this->error(
                 'Anda tidak memiliki akses',
@@ -362,11 +400,10 @@ class ResumeController extends Controller
             );
         }
 
-        if ($resume->file_path) {
-
-            Storage::disk('public')
-                ->delete($resume->file_path);
-        }
+        Storage::disk('public')
+            ->delete(
+                $resume->file_path
+            );
 
         $resume->delete();
 

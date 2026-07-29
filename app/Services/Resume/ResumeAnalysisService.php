@@ -20,29 +20,31 @@ class ResumeAnalysisService
             throw new Exception('Resume kosong.');
         }
 
-        // Batasi panjang resume
+        // Batasi panjang teks resume
         $resumeText = mb_substr($resumeText, 0, 6000);
 
         $systemPrompt = <<<SYSTEM
 Anda adalah Applicant Tracking System (ATS) profesional.
 
-Tugas Anda adalah mengevaluasi resume.
+Tugas Anda adalah mengevaluasi resume berdasarkan isi resume yang diberikan.
 
 ATURAN WAJIB:
 
 - Balas HANYA JSON valid.
-- Jangan menggunakan markdown.
+- Jangan menggunakan Markdown.
 - Jangan menggunakan ```json.
-- Jangan memberikan penjelasan.
-- ats_score berupa angka 0-100.
-- career_level hanya salah satu:
+- Jangan memberikan penjelasan di luar JSON.
+- ats_score harus berupa angka 0 sampai 100.
+- career_level hanya boleh:
   Intern
   Junior
   Mid
   Senior
   Lead
-- skills berupa array string.
-- suggestions berupa array string.
+- skills harus berupa array string.
+- suggestions harus berupa array string.
+- Gunakan hanya informasi yang terdapat dalam resume.
+- Jangan mengarang pengalaman, skill, pendidikan, atau pencapaian.
 SYSTEM;
 
         $userPrompt = <<<PROMPT
@@ -52,7 +54,7 @@ RESUME:
 
 {$resumeText}
 
-Kembalikan JSON berikut:
+Kembalikan JSON dengan struktur berikut:
 
 {
     "ats_score": 0,
@@ -60,76 +62,150 @@ Kembalikan JSON berikut:
     "skills": [],
     "suggestions": []
 }
+
+PENTING:
+- ats_score harus angka 0-100.
+- career_level harus salah satu dari: Intern, Junior, Mid, Senior, Lead.
+- skills harus berisi skill yang ditemukan dalam resume.
+- suggestions berisi saran perbaikan resume.
+- Hanya tampilkan satu objek JSON valid.
 PROMPT;
+
+        /*
+        |--------------------------------------------------------------------------
+        | MODEL OPENROUTER
+        |--------------------------------------------------------------------------
+        |
+        | Model dicoba satu per satu.
+        | Jika model terkena rate limit 429, lanjut ke model berikutnya.
+        |
+        */
 
         $models = [
             'google/gemma-4-26b-a4b-it:free',
             'openai/gpt-oss-20b:free',
             'inclusionai/ling-3.0-flash:free',
-            'poolside/laguna-m.1:free',
         ];
+
+        $lastError = null;
 
         foreach ($models as $model) {
 
             try {
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'HTTP-Referer' => config('app.url'),
-                    'X-Title' => config('app.name'),
-                ])
-                ->timeout(120)
-                ->post(
-                    'https://openrouter.ai/api/v1/chat/completions',
-                    [
-                        'model' => $model,
+                Log::info('ATS AI START', [
+                    'model' => $model,
+                    'text_length' => mb_strlen($resumeText),
+                ]);
 
-                        'messages' => [
-                            [
-                                'role' => 'system',
-                                'content' => $systemPrompt,
-                            ],
-                            [
-                                'role' => 'user',
-                                'content' => $userPrompt,
-                            ],
-                        ],
+                $response = Http::connectTimeout(10)
+                    ->timeout(60)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'HTTP-Referer' => config('app.url'),
+                        'X-Title' => config('app.name'),
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post(
+                        'https://openrouter.ai/api/v1/chat/completions',
+                        [
+                            'model' => $model,
 
-                        'temperature' => 0.1,
-                        'top_p' => 0.8,
-                        'max_tokens' => 800,
-                    ]
-                );
+                            'messages' => [
+                                [
+                                    'role' => 'system',
+                                    'content' => $systemPrompt,
+                                ],
+                                [
+                                    'role' => 'user',
+                                    'content' => $userPrompt,
+                                ],
+                            ],
+
+                            'temperature' => 0.1,
+                            'top_p' => 0.8,
+                            'max_tokens' => 800,
+                        ]
+                    );
 
                 Log::info('ATS RESPONSE', [
                     'model' => $model,
                     'status' => $response->status(),
                 ]);
 
-                if (! $response->successful()) {
+                /*
+                |--------------------------------------------------------------------------
+                | RATE LIMIT
+                |--------------------------------------------------------------------------
+                */
 
-                    Log::warning('ATS model gagal.', [
+                if ($response->status() === 429) {
+
+                    $lastError = 'OpenRouter rate limit exceeded.';
+
+                    Log::warning('ATS RATE LIMIT', [
+                        'model' => $model,
+                        'status' => 429,
+                        'body' => $response->body(),
+                    ]);
+
+                    continue;
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | SERVER ERROR
+                |--------------------------------------------------------------------------
+                */
+
+                if (in_array($response->status(), [
+                    500,
+                    502,
+                    503,
+                    504,
+                ])) {
+
+                    $lastError = 'Provider AI sedang mengalami gangguan.';
+
+                    Log::warning('ATS PROVIDER ERROR', [
                         'model' => $model,
                         'status' => $response->status(),
                         'body' => $response->body(),
                     ]);
 
-                    if (! in_array($response->status(), [
-                        429,
-                        500,
-                        502,
-                        503,
-                        504,
-                    ])) {
+                    continue;
+                }
 
-                        throw new Exception(
-                            $response->json()['error']['message']
-                                ?? 'Provider Error'
-                        );
-                    }
+                /*
+                |--------------------------------------------------------------------------
+                | ERROR LAIN
+                |--------------------------------------------------------------------------
+                */
+
+                if (! $response->successful()) {
+
+                    $message = data_get(
+                        $response->json(),
+                        'error.message',
+                        'Provider AI mengembalikan error.'
+                    );
+
+                    $lastError = $message;
+
+                    Log::error('ATS MODEL ERROR', [
+                        'model' => $model,
+                        'status' => $response->status(),
+                        'message' => $message,
+                    ]);
 
                     continue;
                 }
+
+                /*
+                |--------------------------------------------------------------------------
+                | AMBIL CONTENT AI
+                |--------------------------------------------------------------------------
+                */
 
                 $content = trim(
                     data_get(
@@ -145,21 +221,57 @@ PROMPT;
                 ]);
 
                 if ($content === '') {
+
+                    $lastError = 'AI mengembalikan response kosong.';
+
+                    Log::warning('ATS EMPTY RESPONSE', [
+                        'model' => $model,
+                    ]);
+
                     continue;
                 }
 
-                // Bersihkan markdown jika ada
-                $content = preg_replace('/^```json\s*/i', '', $content);
-                $content = preg_replace('/^```\s*/', '', $content);
-                $content = preg_replace('/\s*```$/', '', $content);
+                /*
+                |--------------------------------------------------------------------------
+                | BERSIHKAN MARKDOWN JSON
+                |--------------------------------------------------------------------------
+                */
+
+                $content = preg_replace(
+                    '/^```json\s*/i',
+                    '',
+                    $content
+                );
+
+                $content = preg_replace(
+                    '/^```\s*/',
+                    '',
+                    $content
+                );
+
+                $content = preg_replace(
+                    '/\s*```$/',
+                    '',
+                    $content
+                );
 
                 $content = trim($content);
 
-                // Ambil JSON jika model menambahkan teks
+                /*
+                |--------------------------------------------------------------------------
+                | AMBIL BAGIAN JSON SAJA
+                |--------------------------------------------------------------------------
+                */
+
                 $start = strpos($content, '{');
                 $end = strrpos($content, '}');
 
-                if ($start !== false && $end !== false) {
+                if (
+                    $start !== false &&
+                    $end !== false &&
+                    $end > $start
+                ) {
+
                     $content = substr(
                         $content,
                         $start,
@@ -167,14 +279,25 @@ PROMPT;
                     );
                 }
 
-                $result = json_decode($content, true);
+                /*
+                |--------------------------------------------------------------------------
+                | DECODE JSON
+                |--------------------------------------------------------------------------
+                */
+
+                $result = json_decode(
+                    $content,
+                    true
+                );
 
                 if (
-                    json_last_error() !== JSON_ERROR_NONE ||
-                    ! is_array($result)
+                    json_last_error() !== JSON_ERROR_NONE
+                    || ! is_array($result)
                 ) {
 
-                    Log::warning('ATS JSON tidak valid.', [
+                    $lastError = 'AI mengembalikan JSON tidak valid.';
+
+                    Log::warning('ATS JSON INVALID', [
                         'model' => $model,
                         'json_error' => json_last_error_msg(),
                         'content' => $content,
@@ -183,28 +306,91 @@ PROMPT;
                     continue;
                 }
 
-                Log::info('ATS berhasil.', [
-                    'model' => $model,
-                ]);
+                /*
+                |--------------------------------------------------------------------------
+                | VALIDASI CAREER LEVEL
+                |--------------------------------------------------------------------------
+                */
+
+                $allowedCareerLevels = [
+                    'Intern',
+                    'Junior',
+                    'Mid',
+                    'Senior',
+                    'Lead',
+                ];
+
+                $careerLevel = $result['career_level']
+                    ?? 'Junior';
+
+                if (! in_array(
+                    $careerLevel,
+                    $allowedCareerLevels,
+                    true
+                )) {
+                    $careerLevel = 'Junior';
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | NORMALISASI HASIL
+                |--------------------------------------------------------------------------
+                */
+
+                $atsScore = (int) (
+                    $result['ats_score']
+                    ?? 0
+                );
+
+                $atsScore = max(
+                    0,
+                    min(
+                        100,
+                        $atsScore
+                    )
+                );
+
+                $skills = is_array(
+                    $result['skills'] ?? null
+                )
+                    ? array_values(
+                        array_filter(
+                            $result['skills']
+                        )
+                    )
+                    : [];
+
+                $suggestions = is_array(
+                    $result['suggestions'] ?? null
+                )
+                    ? array_values(
+                        array_filter(
+                            $result['suggestions']
+                        )
+                    )
+                    : [];
 
                 $returnData = [
-    'ats_score' => (int)($result['ats_score'] ?? 0),
-    'career_level' => $result['career_level'] ?? 'Unknown',
-    'skills' => is_array($result['skills'] ?? null)
-        ? $result['skills']
-        : [],
-    'suggestions' => is_array($result['suggestions'] ?? null)
-        ? $result['suggestions']
-        : [],
-];
+                    'ats_score' => $atsScore,
+                    'career_level' => $careerLevel,
+                    'skills' => $skills,
+                    'suggestions' => $suggestions,
+                ];
 
-Log::info('ATS RETURN', $returnData);
+                Log::info('ATS SUCCESS', [
+                    'model' => $model,
+                    'ats_score' => $atsScore,
+                    'career_level' => $careerLevel,
+                    'skills_count' => count($skills),
+                ]);
 
-return $returnData;
+                return $returnData;
 
             } catch (\Throwable $e) {
 
-                Log::error('ATS Error', [
+                $lastError = $e->getMessage();
+
+                Log::error('ATS EXCEPTION', [
                     'model' => $model,
                     'message' => $e->getMessage(),
                 ]);
@@ -213,13 +399,23 @@ return $returnData;
             }
         }
 
-        return [
-            'ats_score' => 0,
-            'career_level' => 'Unknown',
-            'skills' => [],
-            'suggestions' => [
-                'Semua model AI gagal menganalisis resume.',
-            ],
-        ];
+        /*
+        |--------------------------------------------------------------------------
+        | SEMUA MODEL GAGAL
+        |--------------------------------------------------------------------------
+        |
+        | Jangan mengembalikan hasil ATS palsu.
+        | Lempar exception agar Controller tahu bahwa AI gagal.
+        |
+        */
+
+        Log::error('ALL ATS MODELS FAILED', [
+            'last_error' => $lastError,
+        ]);
+
+        throw new Exception(
+            $lastError
+                ?? 'Semua model AI gagal menganalisis resume.'
+        );
     }
 }
