@@ -170,20 +170,17 @@ Jangan menggunakan bullet.
 
 Jangan menggunakan emoji.
 PROMPT;
-
-        $models = [
-            'openai/gpt-oss-20b:free',
-            'inclusionai/ling-3.0-flash:free',
-            'poolside/laguna-m.1:free',
-            'google/gemma-4-26b-a4b-it:free',
-        ];
+$models = [
+    'google/gemma-4-26b-a4b-it:free',
+    'openai/gpt-oss-20b:free',
+];
 
         foreach ($models as $model) {
 
             try {
 
-               $response = Http::connectTimeout(10)
-    ->timeout(40)
+               $response = Http::connectTimeout(5)
+    ->timeout(25)
     ->withHeaders([
         'Authorization' => 'Bearer ' . $apiKey,
         'HTTP-Referer' => config('app.url'),

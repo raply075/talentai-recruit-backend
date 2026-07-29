@@ -6,7 +6,6 @@ use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-
 class ResumeStructureService
 {
     public function structure(string $resumeText): array
@@ -31,8 +30,8 @@ ATURAN WAJIB:
 - Gunakan HANYA informasi yang terdapat pada resume.
 - Jangan mengarang informasi.
 - Jangan menyimpulkan informasi yang tidak tertulis.
-- Jangan menggabungkan informasi dari bagian resume yang berbeda menjadi fakta baru.
-- Jika suatu informasi tidak tersedia, gunakan null atau array kosong.
+- Jangan menggabungkan informasi dari bagian resume berbeda menjadi fakta baru.
+- Jika informasi tidak tersedia, gunakan null atau array kosong.
 - Jangan mengubah nama, email, nomor telepon, perusahaan, institusi, posisi, teknologi, maupun nama proyek.
 - Pertahankan informasi sesuai dengan isi resume.
 - Jangan menambahkan pengalaman kerja yang tidak terdapat pada resume.
@@ -140,66 +139,85 @@ Gunakan format:
 
 Jika informasi tidak tersedia, gunakan null atau [] sesuai tipe datanya.
 
-Hanya tampilkan JSON valid.
+PENTING:
+Hanya tampilkan satu objek JSON valid.
+Jangan gunakan Markdown.
+Jangan gunakan ```json.
+Jangan memberikan teks sebelum atau sesudah JSON.
 PROMPT;
 
         $models = [
             'google/gemma-4-26b-a4b-it:free',
             'openai/gpt-oss-20b:free',
-            'inclusionai/ling-3.0-flash:free',
-            'poolside/laguna-m.1:free',
         ];
 
         foreach ($models as $model) {
 
             try {
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $apiKey,
-                    'HTTP-Referer' => config('app.url'),
-                    'X-Title' => config('app.name'),
-                ])
-                ->timeout(120)
-                ->post(
-                    'https://openrouter.ai/api/v1/chat/completions',
-                    [
-                        'model' => $model,
+                Log::info('Memulai Resume Structure AI.', [
+                    'model' => $model,
+                    'text_length' => mb_strlen($resumeText),
+                ]);
 
-                        'messages' => [
-                            [
-                                'role' => 'system',
-                                'content' => $systemPrompt,
-                            ],
-                            [
-                                'role' => 'user',
-                                'content' => $userPrompt,
-                            ],
-                        ],
+                $response = Http::connectTimeout(10)
+                    ->timeout(35)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'HTTP-Referer' => config('app.url'),
+                        'X-Title' => config('app.name'),
+                    ])
+                    ->post(
+                        'https://openrouter.ai/api/v1/chat/completions',
+                        [
+                            'model' => $model,
 
-                        'temperature' => 0.1,
-                        'top_p' => 0.8,
-                        'max_tokens' => 1600,
-                    ]
-                );
+                            'messages' => [
+                                [
+                                    'role' => 'system',
+                                    'content' => $systemPrompt,
+                                ],
+                                [
+                                    'role' => 'user',
+                                    'content' => $userPrompt,
+                                ],
+                            ],
+
+                            'temperature' => 0.1,
+                            'top_p' => 0.8,
+                            'max_tokens' => 1600,
+                        ]
+                    );
+
+                Log::info('Resume Structure AI Response.', [
+                    'model' => $model,
+                    'status' => $response->status(),
+                ]);
 
                 if (! $response->successful()) {
 
-                    Log::warning('Resume structure model gagal.', [
-                        'model' => $model,
-                        'status' => $response->status(),
-                    ]);
+                    Log::warning(
+                        'Resume structure model gagal.',
+                        [
+                            'model' => $model,
+                            'status' => $response->status(),
+                            'response' => $response->body(),
+                        ]
+                    );
 
                     if (! in_array($response->status(), [
                         429,
                         500,
                         502,
                         503,
-                        504
+                        504,
                     ])) {
-
                         throw new Exception(
-                            $response->json()['error']['message']
-                                ?? 'Provider mengembalikan error.'
+                            data_get(
+                                $response->json(),
+                                'error.message',
+                                'Provider mengembalikan error.'
+                            )
                         );
                     }
 
@@ -214,6 +232,11 @@ PROMPT;
                     )
                 );
 
+                Log::info('Resume Structure RAW Response.', [
+                    'model' => $model,
+                    'content' => $content,
+                ]);
+
                 if ($content === '') {
 
                     Log::warning(
@@ -226,7 +249,12 @@ PROMPT;
                     continue;
                 }
 
-                // Bersihkan Markdown JSON jika model tetap mengirim ```json
+                /*
+                |--------------------------------------------------------------------------
+                | Bersihkan Markdown JSON
+                |--------------------------------------------------------------------------
+                */
+
                 $content = preg_replace(
                     '/^```json\s*/i',
                     '',
@@ -246,6 +274,33 @@ PROMPT;
                 );
 
                 $content = trim($content);
+
+                /*
+                |--------------------------------------------------------------------------
+                | Ambil hanya bagian JSON
+                |--------------------------------------------------------------------------
+                */
+
+                $firstBrace = strpos($content, '{');
+                $lastBrace = strrpos($content, '}');
+
+                if (
+                    $firstBrace !== false &&
+                    $lastBrace !== false &&
+                    $lastBrace > $firstBrace
+                ) {
+                    $content = substr(
+                        $content,
+                        $firstBrace,
+                        $lastBrace - $firstBrace + 1
+                    );
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | Decode JSON
+                |--------------------------------------------------------------------------
+                */
 
                 $structuredData = json_decode(
                     $content,
@@ -269,10 +324,45 @@ PROMPT;
                     continue;
                 }
 
+                /*
+                |--------------------------------------------------------------------------
+                | Pastikan struktur utama tersedia
+                |--------------------------------------------------------------------------
+                */
+
+                $structuredData = array_merge([
+                    'personal' => [
+                        'name' => null,
+                        'email' => null,
+                        'phone' => null,
+                        'location' => null,
+                        'linkedin' => null,
+                        'github' => null,
+                        'portfolio' => null,
+                    ],
+                    'profile' => null,
+                    'education' => [],
+                    'experience' => [],
+                    'projects' => [],
+                    'skills' => [],
+                    'organizations' => [],
+                    'certifications' => [],
+                    'achievements' => [],
+                ], $structuredData);
+
                 Log::info(
                     'Resume berhasil diubah menjadi struktur JSON.',
                     [
                         'model' => $model,
+                        'has_personal' => ! empty(
+                            $structuredData['personal']
+                        ),
+                        'projects_count' => count(
+                            $structuredData['projects'] ?? []
+                        ),
+                        'skills_count' => count(
+                            $structuredData['skills'] ?? []
+                        ),
                     ]
                 );
 
@@ -293,7 +383,7 @@ PROMPT;
         }
 
         throw new Exception(
-            'Semua model gagal mengubah resume menjadi JSON terstruktur.'
+            'Semua model OpenRouter gagal mengubah resume menjadi JSON terstruktur.'
         );
     }
 }
