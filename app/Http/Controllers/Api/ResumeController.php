@@ -7,9 +7,9 @@ use App\Http\Requests\ResumeUploadRequest;
 use App\Models\Resume;
 use App\Services\Resume\ResumeAnalysisService;
 use App\Services\Resume\ResumeParserService;
-use App\Services\Resume\ResumeStructureService;
 use App\Traits\ApiResponse;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class ResumeController extends Controller
 {
@@ -17,77 +17,98 @@ class ResumeController extends Controller
 
     protected ResumeParserService $parserService;
     protected ResumeAnalysisService $analysisService;
-    protected ResumeStructureService $structureService;
 
     public function __construct(
         ResumeParserService $parserService,
-        ResumeAnalysisService $analysisService,
-        ResumeStructureService $structureService
+        ResumeAnalysisService $analysisService
     ) {
         $this->parserService = $parserService;
         $this->analysisService = $analysisService;
-        $this->structureService = $structureService;
     }
 
     public function upload(ResumeUploadRequest $request)
     {
-        $file = $request->file('resume');
+        try {
+            $file = $request->file('resume');
 
-        // Simpan file
-        $path = $file->store('resumes', 'public');
+            // Simpan file
+            $path = $file->store('resumes', 'public');
 
-        // Simpan data awal
-        $resume = Resume::create([
-            'user_id'       => $request->user()->id,
-            'title'         => pathinfo(
-                $file->getClientOriginalName(),
-                PATHINFO_FILENAME
-            ),
-            'original_name' => $file->getClientOriginalName(),
-            'file_path'     => $path,
-            'file_size'     => $file->getSize(),
-            'ats_score'     => null,
-            'career_level'  => null,
-            'skills'        => [],
-            'suggestions'   => [],
-        ]);
+            // Simpan data awal resume
+            $resume = Resume::create([
+                'user_id'       => $request->user()->id,
+                'title'         => pathinfo(
+                    $file->getClientOriginalName(),
+                    PATHINFO_FILENAME
+                ),
+                'original_name' => $file->getClientOriginalName(),
+                'file_path'     => $path,
+                'file_size'     => $file->getSize(),
+                'ats_score'     => null,
+                'career_level'  => null,
+                'skills'        => [],
+                'suggestions'   => [],
+            ]);
 
-        // Parse PDF menjadi text
-        $fullPath = storage_path('app/public/' . $path);
+            // Path file lengkap
+            $fullPath = storage_path('app/public/' . $path);
 
-        $text = $this->parserService->parse($fullPath);
+            // Parse PDF menjadi text
+            $text = $this->parserService->parse($fullPath);
 
-        // Analisis AI yang sudah ada
-        $analysis = $this->analysisService->analyze($text);
-        \Log::info('CONTROLLER ANALYSIS', $analysis);
+            Log::info('RESUME PARSED', [
+                'resume_id' => $resume->id,
+                'text_length' => strlen($text),
+            ]);
 
-        // Jika AI Analysis error
-        if (isset($analysis['status'])) {
-            return response()->json($analysis);
+            // Analisis ATS menggunakan AI
+            $analysis = $this->analysisService->analyze($text);
+
+            Log::info('CONTROLLER ANALYSIS', $analysis);
+
+            // Jika AI Analysis error
+            if (isset($analysis['status'])) {
+                return response()->json($analysis);
+            }
+
+            // Struktur resume sementara dimatikan
+            // Karena proses AI kedua menyebabkan timeout 30 detik
+            $structuredResume = null;
+
+            // Simpan hasil analisis AI
+            $resume->update([
+                'ats_score' => $analysis['ats_score'] ?? 0,
+                'career_level' => $analysis['career_level'] ?? 'Unknown',
+                'skills' => $analysis['skills'] ?? [],
+                'suggestions' => $analysis['suggestions'] ?? [],
+                'structured_resume' => $structuredResume,
+            ]);
+
+            // Refresh data resume
+            $resume->refresh();
+
+            Log::info('AFTER UPDATE', $resume->toArray());
+
+            // Response berhasil
+            return $this->success([
+                'resume' => $resume,
+                'analysis' => $analysis,
+                'structured_resume' => $structuredResume,
+            ], 'Resume berhasil dianalisis', 201);
+
+        } catch (\Throwable $e) {
+
+            Log::error('RESUME UPLOAD ERROR', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return $this->error(
+                'Gagal memproses resume: ' . $e->getMessage(),
+                500
+            );
         }
-
-        // Struktur resume menggunakan AI
-        $structuredResume = $this->structureService->structure($text);
-
-        // Simpan hasil analisis AI
-        $resume->update([
-            'ats_score'    => $analysis['ats_score'] ?? 0,
-            'career_level' => $analysis['career_level'] ?? 'Unknown',
-            'skills'       => $analysis['skills'] ?? [],
-            'suggestions'  => $analysis['suggestions'] ?? [],
-            'structured_resume' => $structuredResume,
-        ]);
-
-        $resume->refresh();
-\Log::info('AFTER UPDATE', $resume->toArray());
-        return $this->success([
-            'resume' => $resume,
-
-            'analysis' => $analysis,
-
-            'structured_resume' => $structuredResume,
-
-        ], 'Resume berhasil dianalisis dan distrukturkan', 201);
     }
 
     public function index()
