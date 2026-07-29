@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CoverLetterController;
+use App\Http\Controllers\Api\InterviewController;
 use App\Http\Controllers\Api\ResumeController;
 
 // Public Routes
@@ -32,5 +33,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post(
         '/cover-letters/generate',
         [CoverLetterController::class, 'generate']
+    );
+
+    // Untuk generate Interview Simulation
+    Route::post(
+        '/interview/generate',
+        [InterviewController::class, 'generate']
     );
 });
