@@ -1,63 +1,385 @@
-<<<<<<< HEAD
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+<div align="center">
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+# ⚡ TalentAI Recruit Backend
+
+### AI-Powered Career Platform REST API
+
+Production-ready Laravel REST API powering the TalentAI Recruit platform. It provides secure authentication, AI-powered resume analysis, cover letter generation, interview preparation, profile management, and file storage.
+
+<p>
+
+![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20?style=for-the-badge&logo=laravel&logoColor=white)
+![PHP](https://img.shields.io/badge/PHP-8.3-777BB4?style=for-the-badge&logo=php&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![Sanctum](https://img.shields.io/badge/Sanctum-Authentication-red?style=for-the-badge)
+![REST API](https://img.shields.io/badge/REST-API-success?style=for-the-badge)
+
 </p>
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+**Developed by Raply Fediansyah**
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+</div>
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+# 📖 Overview
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+TalentAI Recruit Backend is a RESTful API built with Laravel that powers the TalentAI Recruit platform.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+The backend handles:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- User Authentication
+- Resume Management
+- AI Resume Analysis
+- AI Cover Letter Generation
+- AI Interview Generator
+- User Profile Management
+- Avatar Upload
+- Password Management
+- Secure API Authentication
 
-## Agentic Development
+The API is consumed by the React + TypeScript frontend.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+---
 
-```bash
-composer require laravel/boost --dev
+# ✨ Features
 
-php artisan boost:install
+## Authentication
+
+- User Registration
+- User Login
+- Logout
+- Laravel Sanctum Authentication
+- Token Based Authentication
+- Protected API Routes
+
+---
+
+## Resume
+
+- Upload Resume
+- Resume History
+- Resume Detail
+- Delete Resume
+- ATS Score Analysis
+- Resume Structure Analysis
+- Skill Detection
+- Resume Suggestions
+
+---
+
+## AI Cover Letter
+
+- Generate Cover Letter
+- AI Prompt Processing
+- Personalized Output
+
+---
+
+## AI Interview
+
+- Generate Interview Questions
+- AI Interview Preparation
+- Dynamic Responses
+
+---
+
+## User Profile
+
+- Get Current User Profile
+- Update Profile
+- Upload Avatar
+- Delete Avatar
+- Change Password
+
+---
+
+## Storage
+
+- Resume File Upload
+- Avatar Upload
+- Public Storage Support
+- File Validation
+
+---
+
+# 🏗 Tech Stack
+
+## Backend
+
+- Laravel 12
+- PHP 8.3
+- Laravel Sanctum
+- MySQL
+- REST API
+- Eloquent ORM
+- Storage API
+- Validation
+- Middleware
+
+---
+
+# 📂 Project Structure
+
+```text
+app
+├── Http
+│   ├── Controllers
+│   ├── Middleware
+│   └── Requests
+│
+├── Models
+├── Services
+├── Traits
+└── Providers
+
+database
+├── migrations
+├── factories
+└── seeders
+
+routes
+└── api.php
+
+storage
+
+config
+
+public
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+---
 
-## Contributing
+# 🚀 Installation
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Clone Repository
 
-## Code of Conduct
+```bash
+git clone https://github.com/raply075/talentai-recruit-backend.git
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+cd talentai-recruit-backend
+```
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Install Dependencies
 
-## License
+```bash
+composer install
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-=======
-# talentai-recruit-backend
-AI Powered Applicant Tracking System Backend built with Laravel 12.
->>>>>>> 80b1fa43df9cf73e58e0e18c62f0dfa638eede11
+---
+
+## Install Node Packages (optional)
+
+```bash
+npm install
+```
+
+---
+
+## Environment
+
+Copy environment file
+
+```bash
+cp .env.example .env
+```
+
+Generate application key
+
+```bash
+php artisan key:generate
+```
+
+---
+
+## Configure Database
+
+Update your `.env`
+
+```env
+APP_NAME=TalentAI
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=career_ai
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+---
+
+## Run Migration
+
+```bash
+php artisan migrate
+```
+
+(Optional)
+
+```bash
+php artisan db:seed
+```
+
+---
+
+## Storage Link
+
+```bash
+php artisan storage:link
+```
+
+---
+
+## Run Development Server
+
+```bash
+php artisan serve
+```
+
+Server
+
+```
+http://localhost:8000
+```
+
+---
+
+# 🔑 Main API Endpoints
+
+## Authentication
+
+| Method | Endpoint |
+|---------|----------|
+| POST | /api/register |
+| POST | /api/login |
+| POST | /api/logout |
+
+---
+
+## Resume
+
+| Method | Endpoint |
+|---------|----------|
+| GET | /api/resumes |
+| POST | /api/resumes |
+| GET | /api/resumes/{id} |
+| DELETE | /api/resumes/{id} |
+
+---
+
+## Cover Letter
+
+| Method | Endpoint |
+|---------|----------|
+| POST | /api/cover-letter |
+
+---
+
+## Interview
+
+| Method | Endpoint |
+|---------|----------|
+| POST | /api/interview |
+
+---
+
+## Profile
+
+| Method | Endpoint |
+|---------|----------|
+| GET | /api/profile |
+| PUT | /api/profile |
+| POST | /api/profile/avatar |
+| DELETE | /api/profile/avatar |
+| PUT | /api/profile/password |
+
+---
+
+# 🔒 Security
+
+- Laravel Sanctum Authentication
+- Request Validation
+- Protected Routes
+- Password Hashing
+- File Upload Validation
+- Secure Storage
+- CSRF Protection (where applicable)
+
+---
+
+# 📦 API Response Format
+
+Successful response
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": {}
+}
+```
+
+Error response
+
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {}
+}
+```
+
+---
+
+# 🎯 Highlights
+
+- Clean Architecture
+- RESTful API
+- Production Ready
+- AI Integration
+- Laravel Best Practices
+- Secure Authentication
+- Profile Management
+- Resume Analysis
+- Avatar Upload
+- File Storage
+- Scalable Structure
+
+---
+
+# 📄 License
+
+This project was developed for educational purposes and portfolio showcase.
+
+---
+
+<div align="center">
+
+# 👨‍💻 Developer
+
+## Raply Fediansyah
+
+Full Stack Web Developer
+
+GitHub
+
+https://github.com/raply075
+
+---
+
+⭐ If you find this project useful, consider giving it a star.
+
+**Built with Laravel ❤️ by Raply Fediansyah**
+
+</div>
