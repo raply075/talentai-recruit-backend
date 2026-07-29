@@ -7,49 +7,59 @@ use App\Http\Requests\CoverLetterRequest;
 use App\Models\CoverLetter;
 use App\Models\Resume;
 use App\Services\CoverLetter\CoverLetterService;
-use App\Services\Resume\ResumeParserService;
-use App\Services\Resume\ResumeStructureService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class CoverLetterController extends Controller
 {
     use ApiResponse;
 
     public function __construct(
-        protected ResumeParserService $parser,
-        protected ResumeStructureService $structureService,
         protected CoverLetterService $generator
     ) {}
 
+    /**
+     * Generate Cover Letter berdasarkan resume yang sudah dianalisis.
+     */
     public function generate(CoverLetterRequest $request)
     {
         // 1. Cari resume milik user yang sedang login
         $resume = Resume::where('user_id', auth()->id())
             ->findOrFail($request->resume_id);
 
-        // 2. Lokasi file PDF resume
-        $fullPath = storage_path(
-            'app/public/' . $resume->file_path
-        );
-
-        // 3. Ambil teks dari PDF
-        $resumeText = $this->parser->parse($fullPath);
-
-        // 4. Pastikan teks resume tidak kosong
-        if (trim($resumeText) === '') {
+        // 2. Pastikan resume sudah memiliki structured_resume
+        if (empty($resume->structured_resume)) {
             return $this->error(
-                'Teks resume tidak dapat dibaca atau kosong.',
+                'Data resume terstruktur belum tersedia. Silakan upload dan analisis resume terlebih dahulu.',
                 422
             );
         }
 
-        // 5. Ubah teks resume menjadi JSON terstruktur
-        $structuredResume = $this->structureService->structure(
-            $resumeText
-        );
+        // 3. Ambil structured_resume dari database
+        $structuredResume = $resume->structured_resume;
 
-        // 6. Ubah JSON terstruktur menjadi string
+        // 4. Jika structured_resume masih berupa string JSON,
+        //    decode terlebih dahulu
+        if (is_string($structuredResume)) {
+            $decoded = json_decode($structuredResume, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::error('Structured Resume JSON tidak valid.', [
+                    'resume_id' => $resume->id,
+                    'json_error' => json_last_error_msg(),
+                ]);
+
+                return $this->error(
+                    'Data resume terstruktur tidak valid.',
+                    422
+                );
+            }
+
+            $structuredResume = $decoded;
+        }
+
+        // 5. Ubah structured resume menjadi JSON string
         $structuredResumeJson = json_encode(
             $structuredResume,
             JSON_PRETTY_PRINT |
@@ -57,10 +67,15 @@ class CoverLetterController extends Controller
             JSON_UNESCAPED_SLASHES
         );
 
-        // 7. Kirim JSON terstruktur ke AI
-        \Log::info('Structured Resume JSON', [
-    'json' => $structuredResumeJson
-]);
+        // 6. Log untuk debugging
+        Log::info('Using Stored Structured Resume', [
+            'resume_id' => $resume->id,
+            'json_length' => strlen($structuredResumeJson),
+        ]);
+
+        // 7. Kirim langsung ke CoverLetterService
+        //    Tidak perlu parse PDF lagi
+        //    Tidak perlu structure AI lagi
         $coverLetter = $this->generator->generate(
             $structuredResumeJson,
             $request->company,
@@ -78,43 +93,52 @@ class CoverLetterController extends Controller
             'content' => $coverLetter,
         ]);
 
-        // 9. Kembalikan hasil
+        // 9. Kembalikan response
         return $this->success(
             $letter,
             'Cover letter berhasil dibuat'
         );
     }
+
+    /**
+     * Mengambil structured resume dari database.
+     * Bisa digunakan untuk testing/debugging.
+     */
     public function structureResume(Request $request)
-{
-    // Cari resume milik user yang sedang login
-    $resume = Resume::where('user_id', auth()->id())
-        ->findOrFail($request->resume_id);
+    {
+        // 1. Cari resume milik user yang sedang login
+        $resume = Resume::where('user_id', auth()->id())
+            ->findOrFail($request->resume_id);
 
-    // Lokasi file PDF resume
-    $fullPath = storage_path(
-        'app/public/' . $resume->file_path
-    );
+        // 2. Pastikan structured_resume tersedia
+        if (empty($resume->structured_resume)) {
+            return $this->error(
+                'Data resume terstruktur belum tersedia. Silakan upload dan analisis resume terlebih dahulu.',
+                422
+            );
+        }
 
-    // Ambil teks dari PDF
-    $resumeText = $this->parser->parse($fullPath);
+        // 3. Ambil data structured resume
+        $structuredResume = $resume->structured_resume;
 
-    // Pastikan teks resume tidak kosong
-    if (trim($resumeText) === '') {
-        return $this->error(
-            'Teks resume tidak dapat dibaca atau kosong.',
-            422
+        // 4. Jika masih berupa JSON string, decode
+        if (is_string($structuredResume)) {
+            $decoded = json_decode($structuredResume, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return $this->error(
+                    'Data resume terstruktur tidak valid.',
+                    422
+                );
+            }
+
+            $structuredResume = $decoded;
+        }
+
+        // 5. Kembalikan data structured resume
+        return $this->success(
+            $structuredResume,
+            'Data resume terstruktur berhasil diambil'
         );
     }
-
-    // Ubah teks resume menjadi JSON terstruktur
-    $structuredResume = $this->structureService->structure(
-        $resumeText
-    );
-
-    // Tampilkan hasil JSON terstruktur
-    return $this->success(
-        $structuredResume,
-        'Resume berhasil diubah menjadi struktur JSON'
-    );
-}
 }
